@@ -9,6 +9,7 @@ const port=process.env.PORT||4000
 const app=express()
 
 app.use(cors({origin:"*"}))
+app.use(express.json())
 app.use("/image-gen",NanoApi)
 app.use("/products",ProductApi)
 app.use("/explore",AttractionsApi)
