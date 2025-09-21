@@ -118,13 +118,17 @@ router.post("/finalize-itinerary/:id", async (req, res) => {
 //     await pool.query(`DELETE FROM user_activities
 // WHERE user_id = $1
 // AND booking_date = NOW();`,[id])
+    const timestamp = new Date(); // current time
+
+    // SQL query with a parameter placeholder for the timestamp
     const insertIdsQuery = `
-      INSERT INTO user_activities (user_id, activity_id, booking_date)
-      VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING
+    INSERT INTO user_activities (user_id, activity_id, booking_date)
+    VALUES ($1, $2, $3) 
+    ON CONFLICT DO NOTHING
     `;
     const activity_ids = activities.map((act)=>act.activity_id).filter((id)=>!(id.includes("rest") || id.includes("commute")))
     await Promise.all(
-      activity_ids.map((aid) => pool.query(insertIdsQuery, [id, aid]))
+      activity_ids.map((aid) => pool.query(insertIdsQuery, [id, aid,timestamp]))
     );
 
     // 5. Respond with success.
