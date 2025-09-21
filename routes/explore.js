@@ -93,7 +93,6 @@ router.post("/finalize-itinerary/:id", async (req, res) => {
   }
 
   try {
-    // 1. Map activities to a nested array of values.
     var items=""
 
     for (var i=0;i<activities.length-1;i++){
@@ -107,7 +106,7 @@ router.post("/finalize-itinerary/:id", async (req, res) => {
             '${activities[i].color}','${activities[i].activity_type}'
         )`
 
-    await pool.query("delete from user_itineraries where user_id=$1",[id])
+    // await pool.query("delete from user_itineraries where user_id=$1",[id])
     const queryText = 
       `INSERT INTO user_itineraries (user_id, stored_at, activities)
        VALUES ($1, NOW(),ARRAY[${items}]::calendar_activity_type[])`
@@ -116,9 +115,9 @@ router.post("/finalize-itinerary/:id", async (req, res) => {
     await pool.query(queryText,[id]);
 
     // 4. Insert individual activity IDs (no change here).
-    await pool.query(`DELETE FROM user_activities
-WHERE user_id = $1
-AND booking_date::date = NOW()::date;`,[id])
+//     await pool.query(`DELETE FROM user_activities
+// WHERE user_id = $1
+// AND booking_date = NOW();`,[id])
     const insertIdsQuery = `
       INSERT INTO user_activities (user_id, activity_id, booking_date)
       VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING
@@ -129,7 +128,7 @@ AND booking_date::date = NOW()::date;`,[id])
     );
 
     // 5. Respond with success.
-    console.log("Succesfull")
+    console.log("Successful")
     return res.status(200).json({
         success:true,message:"Update successful"
     })
@@ -156,11 +155,11 @@ router.get("/my-itinerary/:id",async(req,res)=>{
     FROM unnest(activities) AS activity
   ) AS activities
 FROM
-  user_itineraries where user_id =$1`,[id])
+  user_itineraries where user_id =$1 order by stored_at limit 1`,[id])
         if(!result.rowCount || !result.rows[0].activities){
             return res.status(500).json({
                 success:false,
-                message:"Could not fethc the activity list"
+                message:"Could not fetch the activity list"
             })
         }
         return res.json({calendar_events:result.rows[0].activities})
@@ -173,35 +172,57 @@ FROM
         })
     }
 })
-router.get("/my-activities/:id",async(req,res)=>{
-    const {id}=req.params
-    if(!id){
-        return res.status(400).json({
-            success:false,
-            message:"Invalid request"
-        })
+router.get("/my-activities/:id", async (req, res) => {
+  const { id } = req.params;
+  if (!id) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid request",
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT 
+          a.id AS id,
+          a.name AS name,
+          a.description AS description,
+          a.price AS price,
+          a.duration AS duration,
+          a.category AS category,
+          a.latitude,
+          a.longitude,
+          att.name AS attraction,
+          ua.booking_date
+        FROM user_activities AS ua
+        JOIN activities AS a ON ua.activity_id = a.id
+        JOIN attractions AS att ON a."attractionId" = att.id
+        WHERE ua.user_id = $1
+          AND ua.booking_date = (
+            SELECT MAX(booking_date)
+            FROM user_activities
+            WHERE user_id = $1
+          )`,
+      [id]
+    );
+
+    if (!result.rowCount) {
+      return res.status(404).json({
+        success: false,
+        message: "No activities found for the most recent booking date",
+      });
     }
-    try{
-        const result=await pool.query(`SELECT a.id as id, a.name as name, a.description as description,
-            a.price as price, a.duration as duration,a.category as category, latitude, longitude, att.name as attraction from user_activities as ua join 
-            activities as a on ua.activity_id=a.id join attractions as att on a."attractionId"=att.id where ua.user_id=$1`,[id])
-        if(!result.rowCount){
-            return res.status(500).json({
-                success:false,
-                message:"Could not fetch the activity list"
-            })
-        }
-        console.log(result.rows[0]);
-        return res.json({selectedActivities:result.rows})
-    }
-    catch(err){
-        console.log(err.message)
-        return res.status(500).json({
-            success:false,
-            message:"Internal Server Error"
-        })
-    }
-})
+
+    console.log(result.rows[0]);
+    return res.json({ selectedActivities: result.rows });
+  } catch (err) {
+    console.log(err.message);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+});
 
 
 export default router
